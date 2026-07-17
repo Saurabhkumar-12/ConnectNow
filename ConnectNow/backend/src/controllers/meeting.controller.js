@@ -1,6 +1,6 @@
 // Adapted and customized for ConnectNOW
 import httpStatus from "http-status";
-import { Meeting } from "../models/meeting.model.js";
+import { MeetingSession } from "../models/meetingSession.model.js";
 import { User } from "../models/user.model.js";
 import bcrypt from "bcrypt";
 
@@ -26,23 +26,20 @@ const createMeeting = async (req, res) => {
         let meetingId = generateMeetingId();
         
         // Ensure uniqueness
-        let existing = await Meeting.findOne({ meetingId });
+        let existing = await MeetingSession.findOne({ meetingId });
         while (existing) {
             meetingId = generateMeetingId();
-            existing = await Meeting.findOne({ meetingId });
+            existing = await MeetingSession.findOne({ meetingId });
         }
 
         const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
 
-        const newMeeting = new Meeting({
+        const newMeeting = new MeetingSession({
             meetingId,
             host: req.user._id,
             password: hashedPassword,
             participants: [req.user._id],
-            status: "active",
-            // Backwards compatibility fields
-            user_id: req.user.username,
-            meetingCode: meetingId
+            status: "active"
         });
 
         await newMeeting.save();
@@ -66,7 +63,7 @@ const joinMeeting = async (req, res) => {
     }
 
     try {
-        const meeting = await Meeting.findOne({ meetingId, status: "active" }).populate("host", "name username avatar");
+        const meeting = await MeetingSession.findOne({ meetingId, status: "active" }).populate("host", "name username avatar");
         
         if (!meeting) {
             return res.status(httpStatus.NOT_FOUND).json({ message: "Meeting not found or has already ended" });
@@ -111,7 +108,7 @@ const getMeetingInfo = async (req, res) => {
     const { id } = req.params;
 
     try {
-        const meeting = await Meeting.findOne({ meetingId: id, status: "active" })
+        const meeting = await MeetingSession.findOne({ meetingId: id, status: "active" })
             .populate("host", "name username email avatar")
             .populate("participants", "name username email avatar");
 

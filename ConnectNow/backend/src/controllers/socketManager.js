@@ -1,6 +1,6 @@
 // Adapted and customized for ConnectNOW
 import { Server } from "socket.io";
-import { Meeting } from "../models/meeting.model.js";
+import { MeetingSession } from "../models/meetingSession.model.js";
 
 let connections = {};
 let messages = {};
@@ -39,7 +39,7 @@ export const connectToSocket = (server) => {
 
             try {
                 // Fetch the meeting from DB to check host status
-                const meeting = await Meeting.findOne({ meetingId: roomCode, status: "active" });
+                const meeting = await MeetingSession.findOne({ meetingId: roomCode, status: "active" });
 
                 if (meeting) {
                     const hostId = meeting.host.toString();
@@ -219,7 +219,7 @@ export const connectToSocket = (server) => {
 
             try {
                 // Update status in DB
-                await Meeting.findOneAndUpdate(
+                await MeetingSession.findOneAndUpdate(
                     { meetingId: roomCode, status: "active" },
                     { status: "ended", endedAt: new Date() }
                 );
