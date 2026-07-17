@@ -20,8 +20,16 @@ const app = express();
 const server = createServer(app);
 const io = connectToSocket(server);
 
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "http://localhost:3000"
+].filter(Boolean);
+
 app.set("port", (process.env.PORT || 8000));
-app.use(cors());
+app.use(cors({
+    origin: allowedOrigins,
+    credentials: true
+}));
 app.use(express.json({ limit: "40kb" }));
 app.use(express.urlencoded({ limit: "40kb", extended: true }));
 

@@ -10,11 +10,15 @@ let waitingList = {}; // Map roomCode -> Array of socket.ids
 let roomHosts = {}; // Map roomCode -> hostSocketId
 
 export const connectToSocket = (server) => {
+    const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        "http://localhost:3000"
+    ].filter(Boolean);
+
     const io = new Server(server, {
         cors: {
-            origin: "*",
+            origin: allowedOrigins,
             methods: ["GET", "POST"],
-            allowedHeaders: ["*"],
             credentials: true
         }
     });
