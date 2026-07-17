@@ -9,7 +9,6 @@ import {
     IconButton, 
     Button,
     Card,
-    CardContent,
     Avatar
 } from '@mui/material';
 import VideocamIcon from '@mui/icons-material/Videocam';
@@ -29,7 +28,6 @@ import CodeIcon from '@mui/icons-material/Code';
 
 import server from '../environment';
 import { AuthContext } from '../contexts/AuthContext';
-import styles from "../styles/videoComponent.module.css";
 
 const server_url = server;
 var connections = {};
@@ -137,6 +135,7 @@ export default function VideoMeetComponent() {
 
         checkMeeting();
         getPermissions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url]);
 
     const getPermissions = async () => {
@@ -181,6 +180,7 @@ export default function VideoMeetComponent() {
                 getUserMedia();
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [video, audio]);
 
     useEffect(() => {
@@ -557,6 +557,7 @@ export default function VideoMeetComponent() {
         if (screen !== undefined) {
             getDisplayMedia();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [screen]);
     
     let handleScreen = () => {
@@ -630,14 +631,7 @@ export default function VideoMeetComponent() {
         }
     };
 
-    let openChat = () => {
-        setModal(true);
-        setNewMessages(0);
-    };
-    
-    let closeChat = () => {
-        setModal(false);
-    };
+
     
     let handleMessage = (e) => {
         setMessage(e.target.value);

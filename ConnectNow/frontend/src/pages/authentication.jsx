@@ -1,10 +1,9 @@
 // Adapted and customized for ConnectNOW
 import React, { useState, useContext } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { AuthContext } from "../contexts/AuthContext";
 
 export default function Authentication() {
-    const navigate = useNavigate();
     const { handleRegister, handleLogin } = useContext(AuthContext);
 
     // Form states
