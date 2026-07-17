@@ -5,12 +5,16 @@ import { Server } from "socket.io";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "path";
+import { fileURLToPath } from "url";
 import { connectToSocket } from "./controllers/socketManager.js";
 import cors from "cors";
 import userRoutes from "./routes/users.routes.js";
 import meetingRoutes from "./routes/meeting.routes.js";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const app = express();
 const server = createServer(app);
@@ -29,6 +33,7 @@ app.use("/api/v1/meetings", meetingRoutes);
 
 const start = async () => {
     const mongoUrl = process.env.MONGO_URL || "mongodb://127.0.0.1:27017/connectnow";
+    console.log("Connecting to Database...", mongoUrl.replace(/:([^@]+)@/, ":****@"));
     try {
         const connectionDb = await mongoose.connect(mongoUrl);
         console.log(`MONGO Connected DB Host: ${connectionDb.connection.host}`);
