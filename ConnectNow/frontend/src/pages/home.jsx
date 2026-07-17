@@ -4,12 +4,10 @@ import withAuth from '../utils/withAuth';
 import { useNavigate } from 'react-router-dom';
 import { 
     Button, 
-    IconButton, 
     Dialog,
     DialogTitle,
     DialogContent,
-    DialogActions,
-    Avatar
+    DialogActions
 } from '@mui/material';
 import RestoreIcon from '@mui/icons-material/Restore';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
