@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "ConnectNOW",
+  "name": "ConnectNOW - Video calling application",
   "icons": [
     {
       "src": "favicon.ico",

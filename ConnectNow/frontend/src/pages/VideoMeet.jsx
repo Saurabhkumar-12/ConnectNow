@@ -1,3 +1,4 @@
+// Adapted and customized for ConnectNOW
 import React, { useEffect, useRef, useState } from 'react'
 import io from "socket.io-client";
 import { Badge, IconButton, TextField } from '@mui/material';
@@ -34,7 +35,7 @@ export default function VideoMeetComponent() {
 
     let [audioAvailable, setAudioAvailable] = useState(true);
 
-    let [video, setVideo] = useState([]);
+    let [video, setVideo] = useState();
 
     let [audio, setAudio] = useState();
 
@@ -65,10 +66,9 @@ export default function VideoMeetComponent() {
     // }
 
     useEffect(() => {
-        console.log("HELLO")
+        console.log("HELLO");
         getPermissions();
-
-    })
+    }, []);
 
     let getDislayMedia = () => {
         if (screen) {
@@ -123,13 +123,19 @@ export default function VideoMeetComponent() {
 
     useEffect(() => {
         if (video !== undefined && audio !== undefined) {
-            getUserMedia();
+            if (!window.localStream) {
+                getUserMedia();
+            }
             console.log("SET STATE HAS ", video, audio);
-
         }
-
-
     }, [video, audio])
+
+    useEffect(() => {
+        if (!askForUsername && localVideoref.current && window.localStream) {
+            localVideoref.current.srcObject = window.localStream;
+        }
+    }, [askForUsername]);
+
     let getMedia = () => {
         setVideo(videoAvailable);
         setAudio(audioAvailable);
@@ -383,13 +389,23 @@ export default function VideoMeetComponent() {
     }
 
     let handleVideo = () => {
-        setVideo(!video);
-        // getUserMedia();
-    }
+        const newValue = !video;
+        setVideo(newValue);
+        if (window.localStream) {
+            window.localStream.getVideoTracks().forEach(track => {
+                track.enabled = newValue;
+            });
+        }
+    };
     let handleAudio = () => {
-        setAudio(!audio)
-        // getUserMedia();
-    }
+        const newValue = !audio;
+        setAudio(newValue);
+        if (window.localStream) {
+            window.localStream.getAudioTracks().forEach(track => {
+                track.enabled = newValue;
+            });
+        }
+    };
 
     useEffect(() => {
         if (screen !== undefined) {

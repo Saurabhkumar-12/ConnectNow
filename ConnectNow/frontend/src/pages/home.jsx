@@ -1,3 +1,4 @@
+// Adapted and customized for ConnectNOW
 import React, { useContext, useState } from 'react'
 import withAuth from '../utils/withAuth'
 import { useNavigate } from 'react-router-dom'
@@ -12,8 +13,8 @@ function HomeComponent() {
     let navigate = useNavigate();
     const [meetingCode, setMeetingCode] = useState("");
 
-
-    const {addToUserHistory} = useContext(AuthContext);
+    const { addToUserHistory, handleLogout, user } = useContext(AuthContext);
+    
     let handleJoinVideoCall = async () => {
         await addToUserHistory(meetingCode)
         navigate(`/${meetingCode}`)
@@ -21,40 +22,32 @@ function HomeComponent() {
 
     return (
         <>
-
             <div className="navBar">
-
                 <div style={{ display: "flex", alignItems: "center" }}>
-
-                    <h2>Apna Video Call</h2>
+                    <h2>ConnectNOW</h2>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center" }}>
-                    <IconButton onClick={
-                        () => {
-                            navigate("/history")
-                        }
-                    }>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <IconButton onClick={() => navigate("/history")}>
                         <RestoreIcon />
                     </IconButton>
-                    <p>History</p>
+                    <p style={{ margin: 0 }}>History</p>
 
-                    <Button onClick={() => {
-                        localStorage.removeItem("token")
-                        navigate("/auth")
-                    }}>
+                    <Button onClick={() => navigate("/profile")}>
+                        Profile {user && `(${user.name})`}
+                    </Button>
+
+                    <Button onClick={handleLogout}>
                         Logout
                     </Button>
                 </div>
-
-
             </div>
 
 
             <div className="meetContainer">
                 <div className="leftPanel">
                     <div>
-                        <h2>Providing Quality Video Call Just Like Quality Education</h2>
+                        <h2>Providing Quality Video Calls Anytime, Anywhere</h2>
 
                         <div style={{ display: 'flex', gap: "10px" }}>
 

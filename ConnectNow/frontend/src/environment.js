@@ -1,8 +1,4 @@
-let IS_PROD = true;
-const server = IS_PROD ?
-    "https://apnacollegebackend.onrender.com" :
-
-    "http://localhost:8000"
-
+// Adapted and customized for ConnectNOW
+const server = process.env.REACT_APP_BACKEND_URL || "http://localhost:8000";
 
 export default server;
