@@ -3,10 +3,10 @@ import React, { useEffect, useRef, useState, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import io from "socket.io-client";
 import axios from "axios";
+import Editor from "@monaco-editor/react";
 import { 
     Badge, 
     IconButton, 
-    TextField, 
     Button,
     Card,
     CardContent,
@@ -25,6 +25,7 @@ import VolumeMuteIcon from '@mui/icons-material/VolumeMute';
 import GroupRemoveIcon from '@mui/icons-material/GroupRemove';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
+import CodeIcon from '@mui/icons-material/Code';
 
 import server from '../environment';
 import { AuthContext } from '../contexts/AuthContext';
@@ -38,6 +39,15 @@ const peerConfigConnections = {
         { "urls": "stun:stun.l.google.com:19302" }
     ]
 };
+
+const LANGUAGES = [
+    { value: "javascript", label: "JavaScript" },
+    { value: "python", label: "Python" },
+    { value: "cpp", label: "C++" },
+    { value: "html", label: "HTML" },
+    { value: "css", label: "CSS" },
+    { value: "java", label: "Java" }
+];
 
 export default function VideoMeetComponent() {
     const { url } = useParams(); // URL matches the meeting ID (e.g. abc-def-ghi)
@@ -74,6 +84,29 @@ export default function VideoMeetComponent() {
     let [audio, setAudio] = useState(true);
     let [screen, setScreen] = useState();
     let [screenAvailable, setScreenAvailable] = useState();
+
+    // Collaborative Monaco Code Editor States
+    const [showEditor, setShowEditor] = useState(false);
+    const [editorCode, setEditorCode] = useState("// Start writing code collaboratively here...");
+    const [editorLanguage, setEditorLanguage] = useState("javascript");
+    const [isSyncEnabled, setIsSyncEnabled] = useState(true);
+
+    // Refs to bypass stale closures in Socket event handlers
+    const editorCodeRef = useRef("// Start writing code collaboratively here...");
+    const editorLanguageRef = useRef("javascript");
+    const isSyncEnabledRef = useRef(true);
+
+    useEffect(() => {
+        editorCodeRef.current = editorCode;
+    }, [editorCode]);
+
+    useEffect(() => {
+        editorLanguageRef.current = editorLanguage;
+    }, [editorLanguage]);
+
+    useEffect(() => {
+        isSyncEnabledRef.current = isSyncEnabled;
+    }, [isSyncEnabled]);
 
     // Chat states
     let [showModal, setModal] = useState(false);
@@ -224,51 +257,82 @@ export default function VideoMeetComponent() {
         }
     };
 
-    let getDislayMediaSuccess = (stream) => {
-        try {
-            window.localStream.getTracks().forEach(track => track.stop());
-        } catch (e) { console.log(e); }
+    // Robust Screen Sharing via RTCRtpSender.replaceTrack
+    let getDisplayMediaSuccess = (stream) => {
+        window.screenStream = stream;
+        const screenTrack = stream.getVideoTracks()[0];
 
-        window.localStream = stream;
-        localVideoref.current.srcObject = stream;
+        // Replace track in local video element
+        if (localVideoref.current) {
+            localVideoref.current.srcObject = stream;
+        }
 
+        // Dynamically replace track for all active WebRTC connections
         for (let id in connections) {
             if (id === socketIdRef.current) continue;
 
-            connections[id].addStream(window.localStream);
-
-            connections[id].createOffer().then((description) => {
-                connections[id].setLocalDescription(description)
-                    .then(() => {
-                        socketRef.current.emit('signal', id, JSON.stringify({ 'sdp': connections[id].localDescription }));
-                    })
-                    .catch(e => console.log(e));
-            });
+            const senders = connections[id].getSenders();
+            const videoSender = senders.find(s => s.track && s.track.kind === "video");
+            if (videoSender) {
+                videoSender.replaceTrack(screenTrack);
+            }
         }
 
-        stream.getTracks().forEach(track => track.onended = () => {
+        // Handle user stopping screen share via browser default overlay bar
+        screenTrack.onended = () => {
             setScreen(false);
-
-            try {
-                let tracks = localVideoref.current.srcObject.getTracks();
-                tracks.forEach(track => track.stop());
-            } catch (e) { console.log(e); }
-
-            let blackSilence = (...args) => new MediaStream([black(...args), silence()]);
-            window.localStream = blackSilence();
-            localVideoref.current.srcObject = window.localStream;
-
-            getUserMedia();
-        });
+            stopScreenSharing();
+        };
     };
 
-    let getDislayMedia = () => {
+    let stopScreenSharing = async () => {
+        try {
+            // Stop screen sharing tracks
+            if (window.screenStream) {
+                window.screenStream.getTracks().forEach(t => t.stop());
+                window.screenStream = null;
+            }
+
+            // Get new webcam stream
+            const cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                video: videoAvailable ? video : false, 
+                audio: audioAvailable ? audio : false 
+            });
+
+            window.localStream = cameraStream;
+            if (localVideoref.current) {
+                localVideoref.current.srcObject = cameraStream;
+            }
+
+            const cameraTrack = cameraStream.getVideoTracks()[0];
+
+            // Re-swap track back to camera for all peers
+            for (let id in connections) {
+                if (id === socketIdRef.current) continue;
+
+                const senders = connections[id].getSenders();
+                const videoSender = senders.find(s => s.track && s.track.kind === "video");
+                if (videoSender && cameraTrack) {
+                    videoSender.replaceTrack(cameraTrack);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to restore webcam:", e);
+        }
+    };
+
+    let getDisplayMedia = () => {
         if (screen) {
             if (navigator.mediaDevices.getDisplayMedia) {
                 navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-                    .then(getDislayMediaSuccess)
-                    .catch((e) => console.log(e));
+                    .then(getDisplayMediaSuccess)
+                    .catch((e) => {
+                        console.log(e);
+                        setScreen(false);
+                    });
             }
+        } else {
+            stopScreenSharing();
         }
     };
 
@@ -310,6 +374,24 @@ export default function VideoMeetComponent() {
             socketIdRef.current = socketRef.current.id;
 
             socketRef.current.on('chat-message', addMessage);
+
+            // Request initial code sync from host
+            if (meetingDetails && !meetingDetails.isHost) {
+                socketRef.current.emit("request-code-sync", url);
+            }
+
+            // Code editor collaborative events
+            socketRef.current.on('code-update', (data) => {
+                if (data.code !== undefined) setEditorCode(data.code);
+                if (data.language !== undefined) setEditorLanguage(data.language);
+            });
+
+            socketRef.current.on('request-code-sync', (guestSocketId) => {
+                socketRef.current.emit('send-code-sync', guestSocketId, {
+                    code: editorCodeRef.current,
+                    language: editorLanguageRef.current
+                });
+            });
 
             // Handle waiting room events
             socketRef.current.on('waiting-room-status', (status) => {
@@ -473,7 +555,7 @@ export default function VideoMeetComponent() {
 
     useEffect(() => {
         if (screen !== undefined) {
-            getDislayMedia();
+            getDisplayMedia();
         }
     }, [screen]);
     
@@ -489,6 +571,9 @@ export default function VideoMeetComponent() {
             }
             if (window.localStream) {
                 window.localStream.getTracks().forEach(track => track.stop());
+            }
+            if (window.screenStream) {
+                window.screenStream.getTracks().forEach(track => track.stop());
             }
         } catch (e) { }
         navigate("/home");
@@ -520,6 +605,28 @@ export default function VideoMeetComponent() {
     const handleKickParticipant = (targetSocketId) => {
         if (window.confirm("Are you sure you want to remove this participant?")) {
             socketRef.current.emit("kick-participant", url, targetSocketId);
+        }
+    };
+
+    // Monaco Code Editor triggers
+    const handleEditorChange = (value) => {
+        setEditorCode(value);
+        if (isSyncEnabledRef.current && socketRef.current) {
+            socketRef.current.emit("code-update", url, {
+                code: value,
+                language: editorLanguageRef.current
+            });
+        }
+    };
+
+    const handleLanguageChange = (e) => {
+        const newLang = e.target.value;
+        setEditorLanguage(newLang);
+        if (isSyncEnabledRef.current && socketRef.current) {
+            socketRef.current.emit("code-update", url, {
+                code: editorCodeRef.current,
+                language: newLang
+            });
         }
     };
 
@@ -627,7 +734,7 @@ export default function VideoMeetComponent() {
     }
 
     return (
-        <div className="h-screen bg-gray-950 text-white select-none">
+        <div className="h-screen bg-gray-950 text-white select-none font-sans">
             {/* LOBBY / PRE-JOIN ROOM VIEW */}
             {askForUsername === true ? (
                 <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-tr from-gray-950 via-gray-900 to-gray-800 px-4">
@@ -681,7 +788,7 @@ export default function VideoMeetComponent() {
                                 <Button 
                                     variant="contained" 
                                     onClick={handleConnect} 
-                                    className="w-full bg-brand-orange py-3 font-bold hover:bg-orange-500 text-white shadow-lg rounded-xl text-sm"
+                                    className="w-full bg-brand-orange py-3 font-bold hover:bg-orange-500 text-white shadow-lg rounded-xl text-sm animate-none"
                                 >
                                     {isHost ? "Start Meeting (Host)" : "Request to Join"}
                                 </Button>
@@ -703,7 +810,61 @@ export default function VideoMeetComponent() {
                     {/* Main Layout Grid */}
                     <div className="flex-1 flex overflow-hidden relative">
                         
-                        {/* Videos Grid */}
+                        {/* LEFT SIDE: COLLABORATIVE MONACO CODE EDITOR (SPLIT VIEW) */}
+                        {showEditor && (
+                            <div className="w-[60%] border-r border-white/10 bg-slate-950 flex flex-col z-10 relative">
+                                <div className="h-14 border-b border-white/10 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur">
+                                    <div className="flex items-center gap-3">
+                                        <CodeIcon className="text-brand-orange" />
+                                        <h2 className="text-sm font-bold tracking-tight">CodeNOW Sandbox</h2>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        {/* Language Dropdown Selector */}
+                                        <select
+                                            value={editorLanguage}
+                                            onChange={handleLanguageChange}
+                                            className="bg-white/5 border border-white/10 text-white rounded-lg text-xs font-semibold px-2 py-1 outline-none focus:border-brand-orange"
+                                        >
+                                            {LANGUAGES.map((lang) => (
+                                                <option key={lang.value} value={lang.value} className="bg-slate-900 text-white">
+                                                    {lang.label}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {/* Toggle Sync Switch */}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-gray-500 uppercase font-bold">Collab Sync</span>
+                                            <button
+                                                onClick={() => setIsSyncEnabled(!isSyncEnabled)}
+                                                className={`h-5 w-9 rounded-full relative transition duration-300 ${isSyncEnabled ? 'bg-orange-500' : 'bg-gray-800'}`}
+                                            >
+                                                <span className={`h-3.5 w-3.5 rounded-full bg-white absolute top-0.5 transition duration-300 ${isSyncEnabled ? 'right-0.5' : 'left-0.5'}`}></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 overflow-hidden">
+                                    <Editor
+                                        height="100%"
+                                        language={editorLanguage}
+                                        value={editorCode}
+                                        theme="vs-dark"
+                                        onChange={handleEditorChange}
+                                        options={{
+                                            fontSize: 14,
+                                            minimap: { enabled: false },
+                                            fontFamily: "Fira Code, Source Code Pro, monospace",
+                                            fontLigatures: true,
+                                            automaticLayout: true
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* RIGHT SIDE: VIDEOS GRID */}
                         <div className="flex-1 p-4 flex flex-col items-center justify-center relative overflow-hidden">
                             
                             {/* Local User Video (Always floating or part of the roster) */}
@@ -899,13 +1060,18 @@ export default function VideoMeetComponent() {
 
                         {/* Right section: Sidebars Toggles */}
                         <div className="flex items-center gap-3">
-                            <IconButton onClick={() => { setShowParticipantsSidebar(!showParticipantsSidebar); setModal(false); }} className={`size-10 rounded-xl transition ${showParticipantsSidebar ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            {/* Toggle Monaco Code Editor */}
+                            <IconButton onClick={() => { setShowEditor(!showEditor); setShowParticipantsSidebar(false); setModal(false); }} className={`size-10 rounded-xl transition ${showEditor ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30 shadow-lg' : 'text-gray-400 hover:text-white'}`} title="Toggle Code Sandbox">
+                                <CodeIcon />
+                            </IconButton>
+
+                            <IconButton onClick={() => { setShowParticipantsSidebar(!showParticipantsSidebar); setShowEditor(false); setModal(false); }} className={`size-10 rounded-xl transition ${showParticipantsSidebar ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
                                 <Badge badgeContent={waitingList.length > 0 ? waitingList.length : null} color="error">
                                     <PeopleIcon />
                                 </Badge>
                             </IconButton>
 
-                            <IconButton onClick={() => { setModal(!showModal); setShowParticipantsSidebar(false); setNewMessages(0); }} className={`size-10 rounded-xl transition ${showModal ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            <IconButton onClick={() => { setModal(!showModal); setShowEditor(false); setShowParticipantsSidebar(false); setNewMessages(0); }} className={`size-10 rounded-xl transition ${showModal ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
                                 <Badge badgeContent={newMessages > 0 ? newMessages : null} color="warning">
                                     <ChatIcon />
                                 </Badge>

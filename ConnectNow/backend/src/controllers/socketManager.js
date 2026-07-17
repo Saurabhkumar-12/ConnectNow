@@ -239,6 +239,28 @@ export const connectToSocket = (server) => {
             }
         });
 
+        // Collaborative Code Editor updates
+        socket.on("code-update", (roomCode, data) => {
+            if (connections[roomCode]) {
+                connections[roomCode].forEach((sid) => {
+                    if (sid !== socket.id) {
+                        io.to(sid).emit("code-update", data);
+                    }
+                });
+            }
+        });
+
+        socket.on("request-code-sync", (roomCode) => {
+            const hostSocketId = roomHosts[roomCode];
+            if (hostSocketId) {
+                io.to(hostSocketId).emit("request-code-sync", socket.id);
+            }
+        });
+
+        socket.on("send-code-sync", (guestSocketId, data) => {
+            io.to(guestSocketId).emit("code-update", data);
+        });
+
         // Clean up on disconnect
         socket.on("disconnect", () => {
             console.log("SOCKET DISCONNECTED:", socket.id);
