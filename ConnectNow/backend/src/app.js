@@ -8,6 +8,7 @@ import path from "path";
 import { connectToSocket } from "./controllers/socketManager.js";
 import cors from "cors";
 import userRoutes from "./routes/users.routes.js";
+import meetingRoutes from "./routes/meeting.routes.js";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use(express.urlencoded({ limit: "40kb", extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/meetings", meetingRoutes);
 
 const start = async () => {
     const mongoUrl = process.env.MONGO_URL || "mongodb://127.0.0.1:27017/connectnow";
