@@ -87,7 +87,7 @@ const joinMeeting = async (req, res) => {
         }
 
         // Add user to participants if they are logged in and not already listed
-        if (req.user && !meeting.participants.includes(req.user._id)) {
+        if (req.user && !meeting.participants.some(p => p.toString() === req.user._id.toString())) {
             meeting.participants.push(req.user._id);
             await meeting.save();
         }
@@ -114,6 +114,13 @@ const getMeetingInfo = async (req, res) => {
 
         if (!meeting) {
             return res.status(httpStatus.NOT_FOUND).json({ message: "Active meeting not found" });
+        }
+
+        // Add user to participants if they are logged in and not already listed
+        if (req.user && !meeting.participants.some(p => p._id.toString() === req.user._id.toString())) {
+            meeting.participants.push(req.user._id);
+            await meeting.save();
+            await meeting.populate("participants", "name username email avatar");
         }
 
         return res.status(httpStatus.OK).json({

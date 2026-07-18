@@ -8,6 +8,7 @@ let timeOnline = {};
 let socketUsers = {}; // Map socket.id -> userDetails { id, name, username, avatar }
 let waitingList = {}; // Map roomCode -> Array of socket.ids
 let roomHosts = {}; // Map roomCode -> hostSocketId
+let emptyRoomTimeouts = {}; // Map roomCode -> Timeout ID
 
 export const connectToSocket = (server) => {
     const allowedOrigins = [
@@ -30,6 +31,13 @@ export const connectToSocket = (server) => {
         socket.on("join-call", async (pathUrl, userDetails) => {
             // Extract the meeting ID from the URL path (e.g. http://localhost:3000/abc-def-ghi -> abc-def-ghi)
             const roomCode = pathUrl.split("/").pop();
+            
+            // Cancel empty room timeout if any
+            if (emptyRoomTimeouts[roomCode]) {
+                clearTimeout(emptyRoomTimeouts[roomCode]);
+                delete emptyRoomTimeouts[roomCode];
+                console.log(`Cancelled empty room timeout for room ${roomCode}`);
+            }
             
             // Store user details associated with the socket
             socketUsers[socket.id] = userDetails || {
@@ -291,6 +299,24 @@ export const connectToSocket = (server) => {
                         delete messages[roomCodeKey];
                         delete waitingList[roomCodeKey];
                         delete roomHosts[roomCodeKey];
+
+                        // Start empty room timeout of 5 minutes
+                        if (!emptyRoomTimeouts[roomCodeKey]) {
+                            emptyRoomTimeouts[roomCodeKey] = setTimeout(async () => {
+                                try {
+                                    await MeetingSession.findOneAndUpdate(
+                                        { meetingId: roomCodeKey, status: "active" },
+                                        { status: "ended", endedAt: new Date() }
+                                    );
+                                    console.log(`Meeting ${roomCodeKey} ended due to empty room timeout`);
+                                } catch (err) {
+                                    console.error(`Error ending meeting ${roomCodeKey} on empty room timeout:`, err.message);
+                                } finally {
+                                    delete emptyRoomTimeouts[roomCodeKey];
+                                }
+                            }, 5 * 60 * 1000); // 5 minutes
+                            console.log(`Scheduled empty room timeout for room ${roomCodeKey}`);
+                        }
                     }
                     break;
                 }

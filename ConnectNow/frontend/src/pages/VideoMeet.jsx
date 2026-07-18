@@ -64,6 +64,7 @@ export default function VideoMeetComponent() {
     const [passwordRequired, setPasswordRequired] = useState(false);
     const [authError, setAuthError] = useState("");
     const [meetingLoading, setMeetingLoading] = useState(true);
+    const [toastMessage, setToastMessage] = useState("");
 
     // Waiting Room States
     const [inWaitingRoom, setInWaitingRoom] = useState(false);
@@ -609,6 +610,47 @@ export default function VideoMeetComponent() {
         }
     };
 
+    const handleShareLink = async () => {
+        const inviteLink = `${window.location.origin}/${url}`;
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: 'Join my ConnectNOW Meeting',
+                    text: `Join meeting ${url} on ConnectNOW:`,
+                    url: inviteLink
+                });
+                return;
+            } catch (err) {
+                if (err.name !== "AbortError") {
+                    console.error("Native share failed, copying instead:", err);
+                } else {
+                    return; // User cancelled
+                }
+            }
+        }
+
+        try {
+            await navigator.clipboard.writeText(inviteLink);
+            setToastMessage("Invite link copied!");
+            setTimeout(() => setToastMessage(""), 3000);
+        } catch (err) {
+            console.error("Clipboard copy failed:", err);
+            try {
+                const el = document.createElement('textarea');
+                el.value = inviteLink;
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                setToastMessage("Invite link copied!");
+                setTimeout(() => setToastMessage(""), 3000);
+            } catch (e) {
+                setToastMessage("Failed to copy link");
+                setTimeout(() => setToastMessage(""), 3000);
+            }
+        }
+    };
+
     // Monaco Code Editor triggers
     const handleEditorChange = (value) => {
         setEditorCode(value);
@@ -729,6 +771,12 @@ export default function VideoMeetComponent() {
 
     return (
         <div className="h-screen bg-gray-950 text-white select-none font-sans">
+            {toastMessage && (
+                <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-brand-orange/30 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand-orange"></span>
+                    {toastMessage}
+                </div>
+            )}
             {/* LOBBY / PRE-JOIN ROOM VIEW */}
             {askForUsername === true ? (
                 <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-tr from-gray-950 via-gray-900 to-gray-800 px-4">
@@ -753,7 +801,15 @@ export default function VideoMeetComponent() {
                         <div className="w-full md:w-1/2 flex flex-col justify-center space-y-6">
                             <div>
                                 <h2 className="text-2xl font-bold">Lobby</h2>
-                                <p className="text-xs text-gray-400 mt-1">Join Meeting: <span className="font-mono text-brand-orange">{url}</span></p>
+                                <div className="flex items-center justify-between mt-1 gap-2">
+                                    <p className="text-xs text-gray-400">Join Meeting: <span className="font-mono text-brand-orange">{url}</span></p>
+                                    <button 
+                                        onClick={handleShareLink}
+                                        className="text-[10px] text-brand-orange hover:text-orange-400 font-bold bg-brand-orange/10 px-2.5 py-1 rounded border border-brand-orange/20 transition active:scale-95"
+                                    >
+                                        Share Invite Link
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="space-y-4">
@@ -1020,8 +1076,16 @@ export default function VideoMeetComponent() {
                     {/* CONTROL BAR (Bottom) */}
                     <div className="h-20 border-t border-white/10 bg-white/5 backdrop-blur flex items-center justify-between px-6 z-50">
                         {/* Left section: Info */}
-                        <div className="hidden md:flex flex-col">
-                            <span className="text-sm font-semibold">{meetingDetails?.meetingId}</span>
+                        <div className="hidden md:flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">{meetingDetails?.meetingId}</span>
+                                <button 
+                                    onClick={handleShareLink}
+                                    className="text-[9px] text-brand-orange hover:text-orange-400 font-bold bg-brand-orange/10 px-2 py-0.5 rounded border border-brand-orange/20 transition active:scale-95"
+                                >
+                                    Share Link
+                                </button>
+                            </div>
                             <span className="text-[10px] text-gray-500">Host: {meetingDetails?.host?.name}</span>
                         </div>
 
