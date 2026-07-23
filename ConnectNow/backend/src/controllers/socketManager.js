@@ -10,6 +10,13 @@ let waitingList = {}; // Map roomCode -> Array of socket.ids
 let roomHosts = {}; // Map roomCode -> hostSocketId
 let emptyRoomTimeouts = {}; // Map roomCode -> Timeout ID
 
+const isOriginAllowed = (origin, allowed) => {
+    if (!origin) return true;
+    if (allowed.includes(origin)) return true;
+    if (origin.endsWith(".vercel.app") && origin.includes("saurabh-kumar")) return true;
+    return false;
+};
+
 export const connectToSocket = (server) => {
     const allowedOrigins = [
         process.env.FRONTEND_URL,
@@ -18,7 +25,13 @@ export const connectToSocket = (server) => {
 
     const io = new Server(server, {
         cors: {
-            origin: allowedOrigins,
+            origin: (origin, callback) => {
+                if (isOriginAllowed(origin, allowedOrigins)) {
+                    callback(null, true);
+                } else {
+                    callback(new Error("Not allowed by CORS"));
+                }
+            },
             methods: ["GET", "POST"],
             credentials: true
         }

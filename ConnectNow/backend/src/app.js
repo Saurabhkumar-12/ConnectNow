@@ -25,9 +25,22 @@ const allowedOrigins = [
     "http://localhost:3000"
 ].filter(Boolean);
 
+const isOriginAllowed = (origin, allowed) => {
+    if (!origin) return true;
+    if (allowed.includes(origin)) return true;
+    if (origin.endsWith(".vercel.app") && origin.includes("saurabh-kumar")) return true;
+    return false;
+};
+
 app.set("port", (process.env.PORT || 8000));
 app.use(cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+        if (isOriginAllowed(origin, allowedOrigins)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true
 }));
 app.use(express.json({ limit: "40kb" }));
