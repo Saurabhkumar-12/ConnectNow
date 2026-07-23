@@ -1074,9 +1074,9 @@ export default function VideoMeetComponent() {
                     </div>
 
                     {/* CONTROL BAR (Bottom) */}
-                    <div className="h-20 border-t border-white/10 bg-white/5 backdrop-blur flex items-center justify-between px-6 z-50">
+                    <div className="h-20 border-t border-white/10 bg-white/5 backdrop-blur flex items-center justify-between px-3 md:px-6 z-50">
                         {/* Left section: Info */}
-                        <div className="hidden md:flex flex-col gap-1">
+                        <div className="hidden md:flex flex-col gap-1 w-1/4">
                             <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold">{meetingDetails?.meetingId}</span>
                                 <button 
@@ -1090,50 +1090,82 @@ export default function VideoMeetComponent() {
                         </div>
 
                         {/* Center section: Media & Session buttons */}
-                        <div className="flex items-center gap-3 mx-auto">
-                            <IconButton onClick={handleVideo} className={`size-11 rounded-xl border transition ${video ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30'}`}>
+                        <div className="flex items-center justify-center gap-2 md:gap-3 flex-1 md:flex-initial">
+                            <button 
+                                onClick={handleVideo} 
+                                className={`w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl border transition-all duration-200 ${video ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30'}`}
+                                title="Toggle Video"
+                            >
                                 {video ? <VideocamIcon /> : <VideocamOffIcon />}
-                            </IconButton>
+                            </button>
                             
-                            <IconButton onClick={handleAudio} className={`size-11 rounded-xl border transition ${audio ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30'}`}>
+                            <button 
+                                onClick={handleAudio} 
+                                className={`w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl border transition-all duration-200 ${audio ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30'}`}
+                                title="Toggle Mute"
+                            >
                                 {audio ? <MicIcon /> : <MicOffIcon />}
-                            </IconButton>
+                            </button>
 
                             {screenAvailable && (
-                                <IconButton onClick={handleScreen} className={`size-11 rounded-xl border border-white/10 transition ${screen ? 'bg-brand-orange/20 text-brand-orange border-brand-orange/30 hover:bg-brand-orange/30' : 'bg-white/5 text-white hover:bg-white/10'}`}>
+                                <button 
+                                    onClick={handleScreen} 
+                                    className={`w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl border border-white/10 transition-all duration-200 ${screen ? 'bg-brand-orange/20 text-brand-orange border-brand-orange/30 hover:bg-brand-orange/30' : 'bg-white/5 text-white hover:bg-white/10'}`}
+                                    title="Toggle Screen Share"
+                                >
                                     {screen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
-                                </IconButton>
+                                </button>
                             )}
 
                             {isHost ? (
-                                <IconButton onClick={handleEndMeetingForEveryone} className="size-11 rounded-xl bg-red-600 border border-red-700 text-white hover:bg-red-700 transition" title="End Meeting for Everyone">
+                                <button 
+                                    onClick={handleEndMeetingForEveryone} 
+                                    className="w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl bg-red-600 border border-red-700 text-white hover:bg-red-700 transition-all duration-200" 
+                                    title="End Meeting for Everyone"
+                                >
                                     <CallEndIcon />
-                                </IconButton>
+                                </button>
                             ) : (
-                                <IconButton onClick={handleEndCall} className="size-11 rounded-xl bg-red-600 border border-red-700 text-white hover:bg-red-700 transition" title="Leave Meeting">
+                                <button 
+                                    onClick={handleEndCall} 
+                                    className="w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl bg-red-600 border border-red-700 text-white hover:bg-red-700 transition-all duration-200" 
+                                    title="Leave Meeting"
+                                >
                                     <CallEndIcon />
-                                </IconButton>
+                                </button>
                             )}
                         </div>
 
                         {/* Right section: Sidebars Toggles */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-end gap-2 md:gap-3 w-auto md:w-1/4">
                             {/* Toggle Monaco Code Editor */}
-                            <IconButton onClick={() => { setShowEditor(!showEditor); setShowParticipantsSidebar(false); setModal(false); }} className={`size-10 rounded-xl transition ${showEditor ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30 shadow-lg' : 'text-gray-400 hover:text-white'}`} title="Toggle Code Sandbox">
+                            <button 
+                                onClick={() => { setShowEditor(!showEditor); setShowParticipantsSidebar(false); setModal(false); }} 
+                                className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showEditor ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`} 
+                                title="Toggle Code Sandbox"
+                            >
                                 <CodeIcon />
-                            </IconButton>
+                            </button>
 
-                            <IconButton onClick={() => { setShowParticipantsSidebar(!showParticipantsSidebar); setShowEditor(false); setModal(false); }} className={`size-10 rounded-xl transition ${showParticipantsSidebar ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            <button 
+                                onClick={() => { setShowParticipantsSidebar(!showParticipantsSidebar); setShowEditor(false); setModal(false); }} 
+                                className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showParticipantsSidebar ? 'bg-white/10 text-white border border-white/10' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                                title="Participants"
+                            >
                                 <Badge badgeContent={waitingList.length > 0 ? waitingList.length : null} color="error">
                                     <PeopleIcon />
                                 </Badge>
-                            </IconButton>
+                            </button>
 
-                            <IconButton onClick={() => { setModal(!showModal); setShowEditor(false); setShowParticipantsSidebar(false); setNewMessages(0); }} className={`size-10 rounded-xl transition ${showModal ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            <button 
+                                onClick={() => { setModal(!showModal); setShowEditor(false); setShowParticipantsSidebar(false); setNewMessages(0); }} 
+                                className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showModal ? 'bg-white/10 text-white border border-white/10' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                                title="Chat"
+                            >
                                 <Badge badgeContent={newMessages > 0 ? newMessages : null} color="warning">
                                     <ChatIcon />
                                 </Badge>
-                            </IconButton>
+                            </button>
                         </div>
                     </div>
                 </div>
