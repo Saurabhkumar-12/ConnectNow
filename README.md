@@ -304,6 +304,3 @@ It motivates me to build more open-source projects!
 
 ---
 
-# 📄 License
-
-This project is licensed under the **MIT License**.
