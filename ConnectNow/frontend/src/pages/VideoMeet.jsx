@@ -140,6 +140,13 @@ export default function VideoMeetComponent() {
     let [videos, setVideos] = useState([]);
     let [guestName, setGuestName] = useState("");
 
+    useEffect(() => {
+        if (user && user.name && !guestName) {
+            setGuestName(user.name);
+        }
+    }, [user, guestName]);
+
+
     // Code execution states
     let [stdinInput, setStdinInput] = useState("");
     let [codeOutput, setCodeOutput] = useState(null);
@@ -866,12 +873,10 @@ export default function VideoMeetComponent() {
         }
 
 
-        // Connect immediately if host, otherwise socket manager will put guest in waiting room
-        if (isHost) {
-            setAskForUsername(false);
-        }
+        setAskForUsername(false);
         getMedia();
     };
+
 
     // Loading State
     if (meetingLoading) {
@@ -965,23 +970,20 @@ export default function VideoMeetComponent() {
                             </div>
 
                             <div className="space-y-4">
-                                {user ? (
-                                    <div className="rounded-xl bg-white/5 p-3 text-sm text-gray-300">
-                                        <span className="block text-xs text-gray-500">Your Identity</span>
-                                        <span className="font-semibold text-white">{user.name} ({user.username})</span>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Guest Display Name</label>
-                                        <input
-                                            type="text"
-                                            value={guestName}
-                                            onChange={(e) => setGuestName(e.target.value)}
-                                            placeholder="Enter your name (e.g. Alex)"
-                                            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-white placeholder-gray-500 outline-none transition focus:border-brand-orange/50 focus:bg-white/10 text-sm"
-                                        />
-                                    </div>
-                                )}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Display Name / Identity</label>
+                                    <input
+                                        type="text"
+                                        value={guestName}
+                                        onChange={(e) => setGuestName(e.target.value)}
+                                        placeholder="Enter your name to identify (e.g. Alex)"
+                                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-white placeholder-gray-500 outline-none transition focus:border-brand-orange/50 focus:bg-white/10 text-sm font-medium"
+                                    />
+                                    {user && (
+                                        <span className="block text-[11px] text-gray-400 mt-1">Logged in as {user.username}. You can customize your display name above.</span>
+                                    )}
+                                </div>
+
 
 
                                 {passwordRequired && (
@@ -1193,6 +1195,39 @@ export default function VideoMeetComponent() {
                         {/* RIGHT SIDE: VIDEOS GRID */}
                         <div className="flex-1 p-4 flex flex-col items-center justify-center relative overflow-hidden">
                             
+                            {/* FLOATING HOST ADMISSION BANNER */}
+                            {isHost && waitingList.length > 0 && (
+                                <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg bg-slate-900/95 border-2 border-brand-orange text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between gap-4 animate-bounce">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="size-9 rounded-full bg-brand-orange/20 border border-brand-orange flex items-center justify-center shrink-0">
+                                            <PeopleIcon className="text-brand-orange text-sm" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-bold text-white truncate">
+                                                {waitingList[0]?.user?.name || "Guest"} is requesting to join
+                                            </p>
+                                            <span className="text-[10px] text-gray-400">
+                                                {waitingList.length > 1 ? `+${waitingList.length - 1} more waiting` : "Waiting for host approval"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            onClick={() => handleApproveUser(waitingList[0].socketId)}
+                                            className="bg-green-600 hover:bg-green-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition flex items-center gap-1 shadow-md active:scale-95"
+                                        >
+                                            <CheckIcon fontSize="small" /> Approve
+                                        </button>
+                                        <button
+                                            onClick={() => handleRejectUser(waitingList[0].socketId)}
+                                            className="bg-red-600/30 border border-red-500/50 hover:bg-red-600 text-white font-bold text-xs px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 active:scale-95"
+                                        >
+                                            <CloseIcon fontSize="small" /> Reject
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Local User Video (Always floating or part of the roster) */}
                             <div className="absolute bottom-24 right-4 z-30 h-28 md:h-36 aspect-video rounded-xl bg-black border border-white/10 overflow-hidden shadow-2xl">
                                 <video ref={localVideoref} autoPlay muted className="w-full h-full object-cover"></video>
