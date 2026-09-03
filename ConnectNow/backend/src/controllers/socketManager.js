@@ -56,16 +56,25 @@ export const connectToSocket = (server) => {
                 console.log(`Cancelled empty room timeout for room ${roomCode}`);
             }
             
-            // Store user details associated with the socket safely
-            const safeDetails = userDetails && typeof userDetails === "object" ? userDetails : {};
-            socketUsers[socket.id] = {
-                id: typeof safeDetails.id === "string" ? safeDetails.id : socket.id,
-                name: typeof safeDetails.name === "string" ? safeDetails.name.slice(0, 50) : `Guest-${socket.id.slice(0, 4)}`,
-                username: typeof safeDetails.username === "string" ? safeDetails.username.slice(0, 30) : `guest_${socket.id.slice(0, 4)}`,
-                avatar: typeof safeDetails.avatar === "string" ? safeDetails.avatar : ""
-            };
+const sanitizeName = (rawName, fallback) => {
+    if (typeof rawName !== "string") return fallback;
+    const clean = rawName.replace(/<[^>]*>?/g, "").replace(/[\x00-\x1F\x7F]/g, "").trim();
+    if (!clean || clean.length < 2) return fallback;
+    return clean.slice(0, 50);
+};
 
-            timeOnline[socket.id] = new Date();
+// Store user details associated with the socket safely
+const safeDetails = userDetails && typeof userDetails === "object" ? userDetails : {};
+const fallbackGuestName = `Guest-${socket.id.slice(0, 4)}`;
+socketUsers[socket.id] = {
+    id: typeof safeDetails.id === "string" ? safeDetails.id : socket.id,
+    name: sanitizeName(safeDetails.name, fallbackGuestName),
+    username: typeof safeDetails.username === "string" ? safeDetails.username.slice(0, 30) : `guest_${socket.id.slice(0, 4)}`,
+    avatar: typeof safeDetails.avatar === "string" ? safeDetails.avatar : ""
+};
+
+timeOnline[socket.id] = new Date();
+
 
             try {
                 // Fetch the meeting from DB to check host status
@@ -272,6 +281,33 @@ export const connectToSocket = (server) => {
                 });
             }
         });
+
+        // Dynamic update of user/guest display name
+        socket.on("update-user-details", (newDetails) => {
+            if (!newDetails || typeof newDetails !== "object") return;
+
+            if (socketUsers[socket.id]) {
+                if (newDetails.name) {
+                    const fallbackName = socketUsers[socket.id].name;
+                    socketUsers[socket.id].name = sanitizeName(newDetails.name, fallbackName);
+                }
+                if (newDetails.username) {
+                    socketUsers[socket.id].username = String(newDetails.username).slice(0, 30);
+                }
+                if (newDetails.avatar) {
+                    socketUsers[socket.id].avatar = String(newDetails.avatar);
+                }
+
+                // Broadcast updated roster to room
+                for (const [roomCode, userSids] of Object.entries(connections)) {
+                    if (userSids.includes(socket.id)) {
+                        broadcastParticipantList(roomCode, io);
+                        break;
+                    }
+                }
+            }
+        });
+
 
         // Collaborative Code Editor updates
         socket.on("code-update", (roomCode, data) => {
