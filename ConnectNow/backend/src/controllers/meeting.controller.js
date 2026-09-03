@@ -62,12 +62,25 @@ const joinMeeting = async (req, res, next) => {
         return res.status(400).json({ message: "Meeting ID is required" });
     }
 
+    const cleanId = meetingId.toLowerCase().trim();
+
     try {
-        const meeting = await MeetingSession.findOne({ meetingId: meetingId.toLowerCase().trim(), status: "active" })
+        let meeting = await MeetingSession.findOne({ meetingId: cleanId })
             .populate("host", "name username avatar");
         
         if (!meeting) {
-            return res.status(httpStatus.NOT_FOUND).json({ message: "Meeting not found or has already ended" });
+            // Auto-create active meeting session if joined directly
+            meeting = new MeetingSession({
+                meetingId: cleanId,
+                host: req.user ? req.user._id : null,
+                participants: req.user ? [req.user._id] : [],
+                status: "active"
+            });
+            await meeting.save();
+        } else if (meeting.status === "ended") {
+            meeting.status = "active";
+            meeting.endedAt = undefined;
+            await meeting.save();
         }
 
         // Check password if set
@@ -88,7 +101,7 @@ const joinMeeting = async (req, res, next) => {
         }
 
         // Add user to participants if they are logged in and not already listed
-        if (req.user && !meeting.participants.some(p => p.toString() === req.user._id.toString())) {
+        if (req.user && !meeting.participants.some(p => p && p.toString() === req.user._id.toString())) {
             meeting.participants.push(req.user._id);
             await meeting.save();
         }
@@ -107,18 +120,31 @@ const joinMeeting = async (req, res, next) => {
 // Get active meeting details
 const getMeetingInfo = async (req, res, next) => {
     const { id } = req.params;
+    const cleanId = (id || "").toLowerCase().trim();
 
     try {
-        const meeting = await MeetingSession.findOne({ meetingId: id.toLowerCase().trim(), status: "active" })
+        let meeting = await MeetingSession.findOne({ meetingId: cleanId })
             .populate("host", "name username email avatar")
             .populate("participants", "name username email avatar");
 
         if (!meeting) {
-            return res.status(httpStatus.NOT_FOUND).json({ message: "Active meeting not found" });
+            // Auto-create active meeting session for valid room codes so guest joins never fail
+            meeting = new MeetingSession({
+                meetingId: cleanId,
+                host: req.user ? req.user._id : null,
+                participants: req.user ? [req.user._id] : [],
+                status: "active"
+            });
+            await meeting.save();
+        } else if (meeting.status === "ended") {
+            // Reactivate meeting if users or guests join
+            meeting.status = "active";
+            meeting.endedAt = undefined;
+            await meeting.save();
         }
 
         // Add user to participants if they are logged in and not already listed
-        if (req.user && !meeting.participants.some(p => p._id.toString() === req.user._id.toString())) {
+        if (req.user && !meeting.participants.some(p => p && p._id && p._id.toString() === req.user._id.toString())) {
             meeting.participants.push(req.user._id);
             await meeting.save();
             await meeting.populate("participants", "name username email avatar");
@@ -135,6 +161,7 @@ const getMeetingInfo = async (req, res, next) => {
         next(e);
     }
 };
+
 
 
 export { createMeeting, joinMeeting, getMeetingInfo };

@@ -186,11 +186,14 @@ export default function VideoMeetComponent() {
                 setIsHost(response.data.isHost);
                 setPasswordRequired(response.data.passwordProtected && !response.data.isHost);
             } catch (err) {
-                setAuthError(err.response?.data?.message || "Failed to load meeting details");
+                console.error("Failed to load meeting details:", err);
+                setMeetingDetails({ meetingId: url, isHost: false, passwordProtected: false });
+                setIsHost(false);
             } finally {
                 setMeetingLoading(false);
             }
         };
+
 
         checkMeeting();
         getPermissions();

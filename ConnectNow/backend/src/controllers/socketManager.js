@@ -72,9 +72,10 @@ export const connectToSocket = (server) => {
                 const meeting = await MeetingSession.findOne({ meetingId: roomCode, status: "active" });
 
                 if (meeting) {
-                    const hostId = meeting.host.toString();
+                    const hostId = meeting.host ? meeting.host.toString() : null;
                     const currentUserId = socketUsers[socket.id].id;
-                    const isHost = hostId === currentUserId;
+                    const isHost = Boolean(hostId && hostId === currentUserId);
+
 
                     if (isHost) {
                         // Mark this socket as the active host socket for the room
