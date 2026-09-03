@@ -68,11 +68,14 @@ const runProcess = ({ command, args, cwd, stdinText = "", timeoutMs = MAX_EXECUT
             } catch (e) { }
         }, timeoutMs);
 
-        // Feed optional stdin input
-        if (stdinText && child.stdin) {
-            child.stdin.write(stdinText);
+        // Feed optional stdin input and close stdin stream so child process doesn't block on read
+        if (child.stdin) {
+            if (stdinText) {
+                child.stdin.write(stdinText);
+            }
             child.stdin.end();
         }
+
 
         // Capture stdout with size limit
         child.stdout?.on("data", (data) => {

@@ -26,6 +26,10 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import CodeIcon from '@mui/icons-material/Code';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import DescriptionIcon from '@mui/icons-material/Description';
+import DownloadIcon from '@mui/icons-material/Download';
+
+
 
 
 import server from '../environment';
@@ -49,10 +53,28 @@ const LANGUAGES = [
     { value: "java", label: "Java" }
 ];
 
+const STARTER_TEMPLATES = {
+    javascript: `// Start writing JavaScript code collaboratively here..\nconsole.log("Hello ConnectNOW");\n`,
+    python: `# Start writing Python code collaboratively here..\nprint("Hello ConnectNOW")\n`,
+    cpp: `// Start writing C++ code collaboratively here..\n#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello ConnectNOW" << endl;\n    return 0;\n}\n`,
+    java: `// Start writing Java code collaboratively here..\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello ConnectNOW");\n    }\n}\n`,
+    html: `<!-- Start writing HTML code collaboratively here.. -->\n<div style="padding: 20px; color: #f97316; font-family: sans-serif;">\n  <h1>Hello ConnectNOW</h1>\n</div>\n`,
+    css: `/* Start writing CSS code collaboratively here.. */\nbody {\n  background-color: #0f172a;\n  color: #ffffff;\n}\n`
+};
+
 export default function VideoMeetComponent() {
     const { url } = useParams(); // URL matches the meeting ID (e.g. abc-def-ghi)
     const navigate = useNavigate();
     const { user } = useContext(AuthContext);
+
+    // In-Meeting Notes States
+    const [showNotesModal, setShowNotesModal] = useState(false);
+    const [inMeetingNotes, setInMeetingNotes] = useState([]);
+    const [noteTitleInput, setNoteTitleInput] = useState("");
+    const [noteContentInput, setNoteContentInput] = useState("");
+    const [guestNoteContent, setGuestNoteContent] = useState("");
+    const [noteSaving, setNoteSaving] = useState(false);
+
 
     // Refs
     var socketRef = useRef();
@@ -695,7 +717,73 @@ export default function VideoMeetComponent() {
         }
     };
 
+    // In-Meeting Notes Handlers
+    const fetchInMeetingNotes = async () => {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        try {
+            const response = await axios.get(`${server_url}/api/v1/notes`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setInMeetingNotes(response.data);
+        } catch (err) {
+            console.error("Failed to fetch in-meeting notes:", err);
+        }
+    };
+
+    const handleCreateInMeetingNote = async (e) => {
+        e.preventDefault();
+        if (!noteTitleInput.trim() || !noteContentInput.trim()) return;
+
+        setNoteSaving(true);
+        try {
+            const token = localStorage.getItem("token");
+            const response = await axios.post(`${server_url}/api/v1/notes`, {
+                title: noteTitleInput,
+                content: noteContentInput
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setInMeetingNotes([response.data, ...inMeetingNotes]);
+            setNoteTitleInput("");
+            setNoteContentInput("");
+            setToastMessage("Note saved to account!");
+            setTimeout(() => setToastMessage(""), 3000);
+        } catch (err) {
+            setToastMessage(err.response?.data?.message || "Failed to save note");
+            setTimeout(() => setToastMessage(""), 3000);
+        } finally {
+            setNoteSaving(false);
+        }
+    };
+
+    const handleDownloadGuestNote = () => {
+        if (!guestNoteContent.trim()) return;
+        const noteText = [
+            "--- CONNECTNOW NOTE (.tst) ---",
+            "VERSION: 1.0",
+            `TITLE: Meeting Note (${url})`,
+            `CREATED: ${new Date().toISOString()}`,
+            "--- CONTENT ---",
+            guestNoteContent
+        ].join("\n");
+
+        const blob = new Blob([noteText], { type: "text/plain;charset=utf-8" });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.setAttribute("download", `meeting_note_${url}.tst`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        setToastMessage(".tst note file downloaded!");
+        setTimeout(() => setToastMessage(""), 3000);
+    };
+
     // Monaco Code Editor triggers
+
     const handleEditorChange = (value) => {
         setEditorCode(value);
         if (isSyncEnabledRef.current && socketRef.current) {
@@ -709,13 +797,29 @@ export default function VideoMeetComponent() {
     const handleLanguageChange = (e) => {
         const newLang = e.target.value;
         setEditorLanguage(newLang);
+
+        const currentCode = (editorCodeRef.current || "").trim();
+        const isDefaultCode = !currentCode || 
+            currentCode.startsWith("// Start writing code") || 
+            currentCode.startsWith("# Start writing code") ||
+            currentCode.startsWith("<!-- Start writing code") ||
+            currentCode.startsWith("/* Start writing code") ||
+            Object.values(STARTER_TEMPLATES).some(t => t.trim() === currentCode);
+
+        let newCode = editorCodeRef.current;
+        if (isDefaultCode && STARTER_TEMPLATES[newLang]) {
+            newCode = STARTER_TEMPLATES[newLang];
+            setEditorCode(newCode);
+        }
+
         if (isSyncEnabledRef.current && socketRef.current) {
             socketRef.current.emit("code-update", url, {
-                code: editorCodeRef.current,
+                code: newCode,
                 language: newLang
             });
         }
     };
+
 
 
     
@@ -1240,6 +1344,110 @@ export default function VideoMeetComponent() {
                                 </div>
                             </div>
                         )}
+
+                        {/* IN-MEETING NOTES SIDEBAR */}
+                        {showNotesModal && (
+                            <div className="w-80 border-l border-white/10 bg-white/5 backdrop-blur-md p-6 flex flex-col z-40 relative">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-lg font-bold flex items-center gap-2 text-white">
+                                        <DescriptionIcon className="text-brand-orange" /> Meeting Notes
+                                    </h2>
+                                    <IconButton onClick={() => setShowNotesModal(false)} className="text-gray-400 hover:text-white">
+                                        <CloseIcon />
+                                    </IconButton>
+                                </div>
+
+                                {user ? (
+                                    <div className="flex-1 flex flex-col overflow-hidden space-y-4">
+                                        {/* Save Quick Note Form */}
+                                        <form onSubmit={handleCreateInMeetingNote} className="space-y-3 bg-white/5 p-3 rounded-xl border border-white/10">
+                                            <span className="block text-xs font-bold text-gray-400 uppercase">Save Note to Account</span>
+                                            <input
+                                                type="text"
+                                                placeholder="Note Title"
+                                                value={noteTitleInput}
+                                                onChange={(e) => setNoteTitleInput(e.target.value)}
+                                                className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs text-white placeholder-gray-500 outline-none focus:border-brand-orange"
+                                            />
+                                            <textarea
+                                                rows={3}
+                                                placeholder="Write note details..."
+                                                value={noteContentInput}
+                                                onChange={(e) => setNoteContentInput(e.target.value)}
+                                                className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs text-white placeholder-gray-500 outline-none focus:border-brand-orange resize-none"
+                                            />
+                                            <Button
+                                                type="submit"
+                                                disabled={noteSaving}
+                                                variant="contained"
+                                                className="w-full bg-brand-orange hover:bg-orange-500 text-white font-bold text-xs py-1.5 rounded-lg"
+                                            >
+                                                {noteSaving ? "Saving..." : "Save Note"}
+                                            </Button>
+                                        </form>
+
+                                        {/* Notes List */}
+                                        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                                            <span className="block text-xs font-bold text-gray-400 uppercase">Your Saved Notes</span>
+                                            {inMeetingNotes.length > 0 ? (
+                                                inMeetingNotes.map((note) => (
+                                                    <div key={note._id} className="bg-white/5 border border-white/5 p-3 rounded-xl space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <h4 className="text-xs font-bold text-white truncate max-w-[160px]">{note.title}</h4>
+                                                            <IconButton
+                                                                onClick={async () => {
+                                                                    const token = localStorage.getItem("token");
+                                                                    const res = await axios.get(`${server_url}/api/v1/notes/${note._id}/export`, {
+                                                                        headers: { Authorization: `Bearer ${token}` },
+                                                                        responseType: "blob"
+                                                                    });
+                                                                    const blob = new Blob([res.data], { type: "text/plain;charset=utf-8" });
+                                                                    const downloadUrl = window.URL.createObjectURL(blob);
+                                                                    const link = document.createElement("a");
+                                                                    link.href = downloadUrl;
+                                                                    link.setAttribute("download", `${note.title}.tst`);
+                                                                    document.body.appendChild(link);
+                                                                    link.click();
+                                                                    link.parentNode.removeChild(link);
+                                                                }}
+                                                                title="Export .tst"
+                                                                className="text-gray-400 hover:text-orange-400 size-6"
+                                                            >
+                                                                <DownloadIcon fontSize="small" />
+                                                            </IconButton>
+                                                        </div>
+                                                        <p className="text-[11px] text-gray-300 line-clamp-3 whitespace-pre-wrap">{note.content}</p>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-xs text-gray-500 text-center py-6">No saved notes yet</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* Guest Quick Notepad */
+                                    <div className="flex-1 flex flex-col space-y-3">
+                                        <span className="block text-xs font-bold text-gray-400 uppercase">In-Call Quick Notepad</span>
+                                        <textarea
+                                            rows={12}
+                                            value={guestNoteContent}
+                                            onChange={(e) => setGuestNoteContent(e.target.value)}
+                                            placeholder="Take notes during the call... Click Download .tst to export your notes."
+                                            className="flex-1 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-xs text-white placeholder-gray-500 outline-none focus:border-brand-orange resize-none font-mono"
+                                        />
+                                        <Button
+                                            onClick={handleDownloadGuestNote}
+                                            disabled={!guestNoteContent.trim()}
+                                            variant="contained"
+                                            className="bg-brand-orange hover:bg-orange-500 text-white font-bold text-xs py-2 rounded-xl flex items-center gap-1.5 justify-center"
+                                        >
+                                            <DownloadIcon fontSize="small" />
+                                            <span>Download .tst Note</span>
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* CONTROL BAR (Bottom) */}
@@ -1307,9 +1515,25 @@ export default function VideoMeetComponent() {
 
                         {/* Right section: Sidebars Toggles */}
                         <div className="flex items-center justify-end gap-2 md:gap-3 w-auto md:w-1/4">
+                            {/* Toggle In-Meeting Notes */}
+                            <button 
+                                onClick={() => { 
+                                    const nextState = !showNotesModal;
+                                    setShowNotesModal(nextState); 
+                                    if (nextState && user) fetchInMeetingNotes();
+                                    setShowEditor(false); 
+                                    setShowParticipantsSidebar(false); 
+                                    setModal(false); 
+                                }} 
+                                className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showNotesModal ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                                title="In-Meeting Notes"
+                            >
+                                <DescriptionIcon />
+                            </button>
+
                             {/* Toggle Monaco Code Editor */}
                             <button 
-                                onClick={() => { setShowEditor(!showEditor); setShowParticipantsSidebar(false); setModal(false); }} 
+                                onClick={() => { setShowEditor(!showEditor); setShowNotesModal(false); setShowParticipantsSidebar(false); setModal(false); }} 
                                 className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showEditor ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30 shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`} 
                                 title="Toggle Code Sandbox"
                             >
@@ -1317,7 +1541,7 @@ export default function VideoMeetComponent() {
                             </button>
 
                             <button 
-                                onClick={() => { setShowParticipantsSidebar(!showParticipantsSidebar); setShowEditor(false); setModal(false); }} 
+                                onClick={() => { setShowParticipantsSidebar(!showParticipantsSidebar); setShowNotesModal(false); setShowEditor(false); setModal(false); }} 
                                 className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showParticipantsSidebar ? 'bg-white/10 text-white border border-white/10' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`}
                                 title="Participants"
                             >
@@ -1327,7 +1551,7 @@ export default function VideoMeetComponent() {
                             </button>
 
                             <button 
-                                onClick={() => { setModal(!showModal); setShowEditor(false); setShowParticipantsSidebar(false); setNewMessages(0); }} 
+                                onClick={() => { setModal(!showModal); setShowNotesModal(false); setShowEditor(false); setShowParticipantsSidebar(false); setNewMessages(0); }} 
                                 className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${showModal ? 'bg-white/10 text-white border border-white/10' : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'}`}
                                 title="Chat"
                             >
@@ -1336,6 +1560,7 @@ export default function VideoMeetComponent() {
                                 </Badge>
                             </button>
                         </div>
+
                     </div>
                 </div>
             )}
