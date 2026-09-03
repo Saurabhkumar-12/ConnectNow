@@ -7,38 +7,41 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import {
+    recordFailedAuthAttempt,
+    clearFailedAuthAttempt
+} from "../middleware/rateLimiter.middleware.js";
 
 // Generate JWT Helper
 const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET || "connectnow_secret_key_12345", {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error("JWT_SECRET environment variable is missing!");
+    }
+    return jwt.sign({ id }, secret, {
         expiresIn: "30d"
     });
 };
 
 // Login User
-const login = async (req, res) => {
+const login = async (req, res, next) => {
     const { email, username, password } = req.body;
 
     // Support logging in with email OR username
-    const loginQuery = email ? { email } : { username };
-
-    if ((!email && !username) || !password) {
-        return res.status(400).json({ message: "Please provide credentials and password" });
-    }
+    const loginQuery = email ? { email: email.toLowerCase() } : { username: username.trim() };
 
     try {
         const user = await User.findOne(loginQuery);
         if (!user) {
-            return res.status(httpStatus.NOT_FOUND).json({ message: "User Not Found" });
+            recordFailedAuthAttempt(req);
+            return res.status(httpStatus.UNAUTHORIZED).json({ message: "Invalid credentials" });
         }
 
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
         if (isPasswordCorrect) {
+            clearFailedAuthAttempt(req);
             const token = generateToken(user._id);
-            // Sync with old token if any legacy logic checks it
-            user.token = token;
-            await user.save();
 
             return res.status(httpStatus.OK).json({
                 token,
@@ -51,87 +54,91 @@ const login = async (req, res) => {
                 }
             });
         } else {
+            recordFailedAuthAttempt(req);
             return res.status(httpStatus.UNAUTHORIZED).json({ message: "Invalid credentials" });
         }
     } catch (e) {
-        return res.status(500).json({ message: `Something went wrong: ${e.message}` });
+        next(e);
     }
 };
 
 // Register User
-const register = async (req, res) => {
+const register = async (req, res, next) => {
     const { name, username, email, password } = req.body;
 
-    if (!name || !username || !email || !password) {
-        return res.status(400).json({ message: "Please fill in all fields" });
-    }
-
     try {
-        const existingUsername = await User.findOne({ username });
+        const existingUsername = await User.findOne({ username: username.trim() });
         if (existingUsername) {
-            return res.status(httpStatus.FOUND).json({ message: "Username already exists" });
+            return res.status(httpStatus.CONFLICT).json({ message: "Username or email already exists" });
         }
 
-        const existingEmail = await User.findOne({ email: email.toLowerCase() });
+        const existingEmail = await User.findOne({ email: email.toLowerCase().trim() });
         if (existingEmail) {
-            return res.status(httpStatus.FOUND).json({ message: "Email already registered" });
+            return res.status(httpStatus.CONFLICT).json({ message: "Username or email already exists" });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const newUser = new User({
-            name,
-            username,
-            email: email.toLowerCase(),
+            name: name.trim(),
+            username: username.trim(),
+            email: email.toLowerCase().trim(),
             password: hashedPassword
         });
 
         await newUser.save();
         return res.status(httpStatus.CREATED).json({ message: "User Registered Successfully" });
     } catch (e) {
-        return res.status(500).json({ message: `Something went wrong: ${e.message}` });
+        next(e);
     }
 };
 
-// Forgot Password Flow
-const forgotPassword = async (req, res) => {
+// Forgot Password Flow (Prevents Account Enumeration)
+const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
 
     try {
-        const user = await User.findOne({ email: email.toLowerCase() });
-        if (!user) {
-            return res.status(httpStatus.NOT_FOUND).json({ message: "No user found with that email" });
+        const normalizedEmail = email.toLowerCase().trim();
+        const user = await User.findOne({ email: normalizedEmail });
+
+        const isDev = process.env.NODE_ENV === "development";
+        let resetUrl;
+
+        if (user) {
+            // Generate raw token
+            const resetToken = crypto.randomBytes(20).toString("hex");
+
+            // Hash and set in DB with 10-minute expiry
+            user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+            user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+            await user.save();
+
+            const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+            resetUrl = `${frontendUrl.replace(/\/$/, "")}/reset-password/${resetToken}`;
+            
+            console.log(`[SIMULATED EMAIL] Password reset URL for ${normalizedEmail}: ${resetUrl}`);
         }
 
-        // Generate raw token
-        const resetToken = crypto.randomBytes(20).toString("hex");
+        // Return generic success message regardless of account existence to prevent enumeration
+        const responseData = {
+            message: "If an account with that email exists, password reset instructions have been sent."
+        };
 
-        // Hash and set in DB with 10-minute expiry
-        user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
-        user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+        if (isDev && resetUrl) {
+            responseData.resetUrl = resetUrl;
+        }
 
-        await user.save();
-
-        // Local development response: Return the reset URL directly in the payload
-        const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
-
-        return res.status(httpStatus.OK).json({
-            message: "Password reset link generated successfully (Simulated Email)",
-            resetUrl // Returned directly so user can click it in local dev
-        });
+        return res.status(httpStatus.OK).json(responseData);
     } catch (e) {
-        return res.status(500).json({ message: `Something went wrong: ${e.message}` });
+        next(e);
     }
 };
 
 // Reset Password Flow
-const resetPassword = async (req, res) => {
+const resetPassword = async (req, res, next) => {
     const { token } = req.params;
     const { password } = req.body;
-
-    if (!password) {
-        return res.status(400).json({ message: "Please provide a new password" });
-    }
 
     try {
         // Hash token to search
@@ -143,7 +150,7 @@ const resetPassword = async (req, res) => {
         });
 
         if (!user) {
-            return res.status(400).json({ message: "Invalid or expired reset token" });
+            return res.status(httpStatus.BAD_REQUEST).json({ message: "Invalid or expired reset token" });
         }
 
         // Set new password
@@ -155,42 +162,47 @@ const resetPassword = async (req, res) => {
 
         return res.status(httpStatus.OK).json({ message: "Password updated successfully" });
     } catch (e) {
-        return res.status(500).json({ message: `Something went wrong: ${e.message}` });
+        next(e);
     }
 };
 
 // Get User Profile
-const getUserProfile = async (req, res) => {
+const getUserProfile = async (req, res, next) => {
     try {
-        const user = await User.findById(req.user.id).select("-password");
+        const user = await User.findById(req.user._id).select("-password");
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(httpStatus.NOT_FOUND).json({ message: "User not found" });
         }
-        return res.status(200).json(user);
+        return res.status(httpStatus.OK).json(user);
     } catch (e) {
-        return res.status(500).json({ message: `Error retrieving profile: ${e.message}` });
+        next(e);
     }
 };
 
 // Update User Profile & Avatar
-const updateUserProfile = async (req, res) => {
+const updateUserProfile = async (req, res, next) => {
     const { name } = req.body;
 
     try {
-        const user = await User.findById(req.user.id);
+        const user = await User.findById(req.user._id);
         if (!user) {
-            return res.status(404).json({ message: "User not found" });
+            return res.status(httpStatus.NOT_FOUND).json({ message: "User not found" });
         }
 
-        if (name) user.name = name;
+        if (name) user.name = name.trim();
 
-        // If file was uploaded via Multer, update avatar path
+        // If file was uploaded via Multer, update avatar path safely
         if (req.file) {
-            // Delete old avatar if it exists locally
+            // Delete old avatar if it exists locally, using path.basename to prevent path traversal
             if (user.avatar && user.avatar.startsWith("uploads/")) {
-                const oldPath = path.join(process.cwd(), user.avatar);
+                const safeFilename = path.basename(user.avatar);
+                const oldPath = path.join(process.cwd(), "uploads", safeFilename);
                 if (fs.existsSync(oldPath)) {
-                    fs.unlinkSync(oldPath);
+                    try {
+                        fs.unlinkSync(oldPath);
+                    } catch (unlinkErr) {
+                        console.error("Failed to delete old avatar file:", unlinkErr.message);
+                    }
                 }
             }
             user.avatar = `uploads/${req.file.filename}`;
@@ -198,7 +210,7 @@ const updateUserProfile = async (req, res) => {
 
         await user.save();
 
-        return res.status(200).json({
+        return res.status(httpStatus.OK).json({
             message: "Profile updated successfully",
             user: {
                 id: user._id,
@@ -209,61 +221,42 @@ const updateUserProfile = async (req, res) => {
             }
         });
     } catch (e) {
-        return res.status(500).json({ message: `Error updating profile: ${e.message}` });
+        next(e);
     }
 };
 
-// Get User History (Backwards compatible)
-const getUserHistory = async (req, res) => {
-    const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(" ")[1]);
-
+// Get User History
+const getUserHistory = async (req, res, next) => {
     try {
-        let username;
-        if (req.user) {
-            username = req.user.username;
-        } else if (token) {
-            const user = await User.findOne({ token: token });
-            if (user) username = user.username;
+        if (!req.user || !req.user.username) {
+            return res.status(httpStatus.UNAUTHORIZED).json({ message: "Not authorized to retrieve history" });
         }
 
-        if (!username) {
-            return res.status(401).json({ message: "Not authorized to retrieve history" });
-        }
-
-        const meetings = await Meeting.find({ user_id: username });
-        return res.json(meetings);
+        const meetings = await Meeting.find({ user_id: req.user.username }).sort({ date: -1 });
+        return res.status(httpStatus.OK).json(meetings);
     } catch (e) {
-        return res.status(500).json({ message: `Something went wrong: ${e.message}` });
+        next(e);
     }
 };
 
-// Add Meeting to History (Backwards compatible)
-const addToHistory = async (req, res) => {
+// Add Meeting to History
+const addToHistory = async (req, res, next) => {
     const { meeting_code } = req.body;
-    const token = req.body.token || (req.headers.authorization && req.headers.authorization.split(" ")[1]);
 
     try {
-        let username;
-        if (req.user) {
-            username = req.user.username;
-        } else if (token) {
-            const user = await User.findOne({ token: token });
-            if (user) username = user.username;
-        }
-
-        if (!username) {
-            return res.status(401).json({ message: "Not authorized to add to history" });
+        if (!req.user || !req.user.username) {
+            return res.status(httpStatus.UNAUTHORIZED).json({ message: "Not authorized to add to history" });
         }
 
         const newMeeting = new Meeting({
-            user_id: username,
+            user_id: req.user.username,
             meetingCode: meeting_code
         });
 
         await newMeeting.save();
         return res.status(httpStatus.CREATED).json({ message: "Added code to history" });
     } catch (e) {
-        return res.status(500).json({ message: `Something went wrong: ${e.message}` });
+        next(e);
     }
 };
 

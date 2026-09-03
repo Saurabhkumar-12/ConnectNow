@@ -4,7 +4,7 @@ import mongoose, { Schema } from "mongoose";
 const meetingSessionSchema = new Schema(
     {
         meetingId: { type: String, required: true, unique: true },
-        host: { type: Schema.Types.ObjectId, ref: "User", required: true },
+        host: { type: Schema.Types.ObjectId, ref: "User", required: false },
         password: { type: String }, // Hashed optional password
         participants: [{ type: Schema.Types.ObjectId, ref: "User" }],
         status: { type: String, enum: ["active", "ended"], default: "active" },

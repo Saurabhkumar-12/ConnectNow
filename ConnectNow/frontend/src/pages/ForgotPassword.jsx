@@ -28,9 +28,15 @@ export default function ForgotPassword() {
             const data = await handleForgotPassword(email);
             setMessage(data.message);
             if (data.resetUrl) {
-                // Store the simulated URL so local developer can click it
-                const localUrlPath = data.resetUrl.replace("http://localhost:3000", "");
-                setResetLink(localUrlPath);
+                // Extract path relative to frontend origin for react-router Link
+                try {
+                    const parsedUrl = new URL(data.resetUrl);
+                    setResetLink(parsedUrl.pathname + parsedUrl.search);
+                } catch (e) {
+                    // Fallback to removing origin
+                    const relativePath = data.resetUrl.replace(/^https?:\/\/[^/]+/, "");
+                    setResetLink(relativePath);
+                }
             }
         } catch (err) {
             setError(err.response?.data?.message || "Failed to process request");
@@ -78,8 +84,8 @@ export default function ForgotPassword() {
 
                     {resetLink && (
                         <div className="rounded-xl bg-yellow-500/10 border border-yellow-500/20 p-4 text-sm text-yellow-300 space-y-2">
-                            <p className="font-semibold">Simulated Email Output (Local Dev):</p>
-                            <p className="text-xs text-gray-400 font-mono break-all">http://localhost:3000{resetLink}</p>
+                            <p className="font-semibold">Simulated Email Output:</p>
+                            <p className="text-xs text-gray-400 font-mono break-all">{window.location.origin}{resetLink}</p>
                             <Link
                                 to={resetLink}
                                 className="inline-block w-full text-center rounded-xl bg-brand-orange px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-500"

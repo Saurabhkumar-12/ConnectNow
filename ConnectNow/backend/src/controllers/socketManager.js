@@ -42,8 +42,12 @@ export const connectToSocket = (server) => {
 
         // Client requests to join a call
         socket.on("join-call", async (pathUrl, userDetails) => {
+            if (typeof pathUrl !== "string" || !pathUrl.trim()) {
+                return socket.emit("error-message", "Invalid pathUrl parameter");
+            }
+
             // Extract the meeting ID from the URL path (e.g. http://localhost:3000/abc-def-ghi -> abc-def-ghi)
-            const roomCode = pathUrl.split("/").pop();
+            const roomCode = pathUrl.split("/").pop().toLowerCase().trim();
             
             // Cancel empty room timeout if any
             if (emptyRoomTimeouts[roomCode]) {
@@ -52,12 +56,13 @@ export const connectToSocket = (server) => {
                 console.log(`Cancelled empty room timeout for room ${roomCode}`);
             }
             
-            // Store user details associated with the socket
-            socketUsers[socket.id] = userDetails || {
-                id: socket.id,
-                name: `Guest-${socket.id.slice(0, 4)}`,
-                username: `guest_${socket.id.slice(0, 4)}`,
-                avatar: ""
+            // Store user details associated with the socket safely
+            const safeDetails = userDetails && typeof userDetails === "object" ? userDetails : {};
+            socketUsers[socket.id] = {
+                id: typeof safeDetails.id === "string" ? safeDetails.id : socket.id,
+                name: typeof safeDetails.name === "string" ? safeDetails.name.slice(0, 50) : `Guest-${socket.id.slice(0, 4)}`,
+                username: typeof safeDetails.username === "string" ? safeDetails.username.slice(0, 30) : `guest_${socket.id.slice(0, 4)}`,
+                avatar: typeof safeDetails.avatar === "string" ? safeDetails.avatar : ""
             };
 
             timeOnline[socket.id] = new Date();
@@ -109,8 +114,7 @@ export const connectToSocket = (server) => {
                             }));
                             io.to(hostSocketId).emit("waiting-list-update", pendingUsers);
                         } else {
-                            // If the host is not in the room yet, let guests join directly (fallback),
-                            // or keep them waiting. Let's let them join directly to ensure the meeting doesn't block.
+                            // If the host is not in the room yet, let guests join directly (fallback)
                             console.log(`Host not present in room ${roomCode}. Letting guest join directly.`);
                             acceptUserIntoRoom(socket, roomCode, io);
                         }
@@ -128,6 +132,8 @@ export const connectToSocket = (server) => {
 
         // Host approves a waiting user
         socket.on("approve-user", (roomCode, guestSocketId) => {
+            if (typeof roomCode !== "string" || typeof guestSocketId !== "string") return;
+
             // Verify if sender is the host
             if (roomHosts[roomCode] !== socket.id) {
                 return socket.emit("error-message", "Only the host can approve participants");
@@ -159,6 +165,8 @@ export const connectToSocket = (server) => {
 
         // Host rejects a waiting user
         socket.on("reject-user", (roomCode, guestSocketId) => {
+            if (typeof roomCode !== "string" || typeof guestSocketId !== "string") return;
+
             if (roomHosts[roomCode] !== socket.id) {
                 return socket.emit("error-message", "Only the host can reject participants");
             }
@@ -184,11 +192,16 @@ export const connectToSocket = (server) => {
 
         // WebRTC Signaling
         socket.on("signal", (toId, message) => {
+            if (typeof toId !== "string") return;
             io.to(toId).emit("signal", socket.id, message);
         });
 
         // Chat messages
         socket.on("chat-message", (data, sender) => {
+            if (typeof data !== "string" || typeof sender !== "string") return;
+            const safeData = data.slice(0, 2000); // Enforce max 2000 chars per chat message
+            const safeSender = sender.slice(0, 50);
+
             const [matchingRoom, found] = Object.entries(connections).reduce(
                 ([room, isFound], [roomKey, roomValue]) => {
                     if (!isFound && roomValue.includes(socket.id)) {
@@ -205,14 +218,13 @@ export const connectToSocket = (server) => {
                 }
 
                 messages[matchingRoom].push({
-                    sender: sender,
-                    data: data,
+                    sender: safeSender,
+                    data: safeData,
                     "socket-id-sender": socket.id
                 });
-                console.log("Message in room", matchingRoom, ":", sender, data);
 
                 connections[matchingRoom].forEach((elem) => {
-                    io.to(elem).emit("chat-message", data, sender, socket.id);
+                    io.to(elem).emit("chat-message", safeData, safeSender, socket.id);
                 });
             }
         });

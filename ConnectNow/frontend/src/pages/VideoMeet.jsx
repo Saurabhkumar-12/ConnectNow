@@ -25,6 +25,8 @@ import GroupRemoveIcon from '@mui/icons-material/GroupRemove';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import CodeIcon from '@mui/icons-material/Code';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+
 
 import server from '../environment';
 import { AuthContext } from '../contexts/AuthContext';
@@ -107,22 +109,56 @@ export default function VideoMeetComponent() {
         isSyncEnabledRef.current = isSyncEnabled;
     }, [isSyncEnabled]);
 
-    // Chat states
+    // Chat & Guest states
     let [showModal, setModal] = useState(false);
     let [messages, setMessages] = useState([]);
     let [message, setMessage] = useState("");
     let [newMessages, setNewMessages] = useState(0);
     let [askForUsername, setAskForUsername] = useState(true); // true = lobby, false = active meeting
     let [videos, setVideos] = useState([]);
+    let [guestName, setGuestName] = useState("");
+
+    // Code execution states
+    let [stdinInput, setStdinInput] = useState("");
+    let [codeOutput, setCodeOutput] = useState(null);
+    let [isExecutingCode, setIsExecutingCode] = useState(false);
+    let [showConsoleTab, setShowConsoleTab] = useState("stdin");
+
+    const handleRunCode = async () => {
+        setIsExecutingCode(true);
+        setShowConsoleTab("output");
+        setCodeOutput(null);
+
+        try {
+            const token = localStorage.getItem("token");
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+            const response = await axios.post(`${server_url}/api/v1/code/execute`, {
+                language: editorLanguage,
+                code: editorCode,
+                stdin: stdinInput
+            }, { headers });
+
+            setCodeOutput(response.data);
+        } catch (err) {
+            setCodeOutput({
+                status: "runtime_error",
+                stdout: "",
+                stderr: err.response?.data?.message || err.response?.data?.errors?.[0] || "Code execution request failed",
+                executionTime: 0
+            });
+        } finally {
+            setIsExecutingCode(false);
+        }
+    };
 
     // Check meeting status on mount
     useEffect(() => {
         const checkMeeting = async () => {
             try {
                 const token = localStorage.getItem("token");
-                const response = await axios.get(`${server_url}/api/v1/meetings/${url}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                const response = await axios.get(`${server_url}/api/v1/meetings/${url}`, { headers });
                 
                 setMeetingDetails(response.data);
                 setIsHost(response.data.isHost);
@@ -136,6 +172,7 @@ export default function VideoMeetComponent() {
 
         checkMeeting();
         getPermissions();
+
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url]);
 
@@ -365,14 +402,21 @@ export default function VideoMeetComponent() {
         socketRef.current.on('signal', gotMessageFromServer);
 
         socketRef.current.on('connect', () => {
-            // Send JWT details when joining socket
-            socketRef.current.emit('join-call', window.location.href, {
+            // Send user or guest details when joining socket
+            const userPayload = user ? {
                 id: user._id || user.id,
                 name: user.name,
                 username: user.username,
-                avatar: user.avatar
-            });
+                avatar: user.avatar || ""
+            } : {
+                id: socketRef.current.id,
+                name: guestName.trim() || `Guest-${socketRef.current.id.slice(0, 4)}`,
+                username: `guest_${socketRef.current.id.slice(0, 4)}`,
+                avatar: ""
+            };
+            socketRef.current.emit('join-call', window.location.href, userPayload);
             socketIdRef.current = socketRef.current.id;
+
 
             socketRef.current.on('chat-message', addMessage);
 
@@ -690,7 +734,8 @@ export default function VideoMeetComponent() {
     };
 
     let sendMessage = () => {
-        socketRef.current.emit('chat-message', message, user.name);
+        const senderName = user?.name || (guestName.trim() || "Guest");
+        socketRef.current.emit('chat-message', message, senderName);
         setMessage("");
     };
 
@@ -702,17 +747,17 @@ export default function VideoMeetComponent() {
         if (passwordRequired) {
             try {
                 const token = localStorage.getItem("token");
+                const headers = token ? { Authorization: `Bearer ${token}` } : {};
                 await axios.post(`${server_url}/api/v1/meetings/join`, {
                     meetingId: url,
                     password: password
-                }, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                }, { headers });
             } catch (err) {
                 setAuthError(err.response?.data?.message || "Incorrect password");
                 return;
             }
         }
+
 
         // Connect immediately if host, otherwise socket manager will put guest in waiting room
         if (isHost) {
@@ -813,10 +858,24 @@ export default function VideoMeetComponent() {
                             </div>
 
                             <div className="space-y-4">
-                                <div className="rounded-xl bg-white/5 p-3 text-sm text-gray-300">
-                                    <span className="block text-xs text-gray-500">Your Identity</span>
-                                    <span className="font-semibold text-white">{user?.name} ({user?.username})</span>
-                                </div>
+                                {user ? (
+                                    <div className="rounded-xl bg-white/5 p-3 text-sm text-gray-300">
+                                        <span className="block text-xs text-gray-500">Your Identity</span>
+                                        <span className="font-semibold text-white">{user.name} ({user.username})</span>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-400 mb-1.5 uppercase">Guest Display Name</label>
+                                        <input
+                                            type="text"
+                                            value={guestName}
+                                            onChange={(e) => setGuestName(e.target.value)}
+                                            placeholder="Enter your name (e.g. Alex)"
+                                            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-white placeholder-gray-500 outline-none transition focus:border-brand-orange/50 focus:bg-white/10 text-sm"
+                                        />
+                                    </div>
+                                )}
+
 
                                 {passwordRequired && (
                                     <div>
@@ -873,7 +932,7 @@ export default function VideoMeetComponent() {
                                         <select
                                             value={editorLanguage}
                                             onChange={handleLanguageChange}
-                                            className="bg-white/5 border border-white/10 text-white rounded-lg text-xs font-semibold px-2 py-1 outline-none focus:border-brand-orange"
+                                            className="bg-white/5 border border-white/10 text-white rounded-lg text-xs font-semibold px-2.5 py-1.5 outline-none focus:border-brand-orange"
                                         >
                                             {LANGUAGES.map((lang) => (
                                                 <option key={lang.value} value={lang.value} className="bg-slate-900 text-white">
@@ -892,6 +951,20 @@ export default function VideoMeetComponent() {
                                                 <span className={`h-3.5 w-3.5 rounded-full bg-white absolute top-0.5 transition duration-300 ${isSyncEnabled ? 'right-0.5' : 'left-0.5'}`}></span>
                                             </button>
                                         </div>
+
+                                        {/* Run Code Execution Button */}
+                                        <button
+                                            onClick={handleRunCode}
+                                            disabled={isExecutingCode}
+                                            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-lg transition active:scale-95 cursor-pointer"
+                                        >
+                                            {isExecutingCode ? (
+                                                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                                            ) : (
+                                                <PlayArrowIcon fontSize="small" />
+                                            )}
+                                            <span>{isExecutingCode ? "Running..." : "Run Code"}</span>
+                                        </button>
                                     </div>
                                 </div>
 
@@ -911,6 +984,102 @@ export default function VideoMeetComponent() {
                                         }}
                                     />
                                 </div>
+
+                                {/* Console & Stdin Input Panel */}
+                                <div className="h-48 border-t border-white/10 bg-slate-900/90 flex flex-col">
+                                    <div className="h-9 border-b border-white/10 flex items-center justify-between px-4 bg-slate-950/50">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => setShowConsoleTab("stdin")}
+                                                className={`text-xs font-semibold px-2.5 py-1 rounded-md transition ${showConsoleTab === "stdin" ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"}`}
+                                            >
+                                                Stdin Input
+                                            </button>
+                                            <button
+                                                onClick={() => setShowConsoleTab("output")}
+                                                className={`text-xs font-semibold px-2.5 py-1 rounded-md transition flex items-center gap-1.5 ${showConsoleTab === "output" ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"}`}
+                                            >
+                                                <span>Output Console</span>
+                                                {codeOutput && (
+                                                    <span className={`h-2 w-2 rounded-full ${codeOutput.status === "success" ? "bg-green-400" : "bg-red-400"}`}></span>
+                                                )}
+                                            </button>
+                                        </div>
+
+                                        {codeOutput && (
+                                            <button
+                                                onClick={() => setCodeOutput(null)}
+                                                className="text-[10px] text-gray-400 hover:text-white"
+                                            >
+                                                Clear Console
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 p-3 overflow-y-auto font-mono text-xs">
+                                        {showConsoleTab === "stdin" ? (
+                                            <textarea
+                                                value={stdinInput}
+                                                onChange={(e) => setStdinInput(e.target.value)}
+                                                placeholder="Enter standard input (stdin) to pass to program execution..."
+                                                className="w-full h-full bg-transparent text-gray-200 placeholder-gray-600 outline-none resize-none"
+                                            />
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {codeOutput ? (
+                                                    <>
+                                                        {/* Execution Status Badge */}
+                                                        <div className="flex items-center gap-3">
+                                                            {codeOutput.status === "success" && (
+                                                                <span className="bg-green-500/20 text-green-400 text-[10px] font-bold px-2 py-0.5 rounded border border-green-500/30">
+                                                                    SUCCESS ({codeOutput.executionTime}ms)
+                                                                </span>
+                                                            )}
+                                                            {codeOutput.status === "compile_error" && (
+                                                                <span className="bg-red-500/20 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded border border-red-500/30">
+                                                                    COMPILATION ERROR
+                                                                </span>
+                                                            )}
+                                                            {codeOutput.status === "runtime_error" && (
+                                                                <span className="bg-orange-500/20 text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded border border-orange-500/30">
+                                                                    RUNTIME ERROR
+                                                                </span>
+                                                            )}
+                                                            {codeOutput.status === "timeout" && (
+                                                                <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/30">
+                                                                    EXECUTION TIMEOUT (5s Limit Exceeded)
+                                                                </span>
+                                                            )}
+                                                            {codeOutput.status === "invalid_input" && (
+                                                                <span className="bg-red-500/20 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded border border-red-500/30">
+                                                                    INVALID INPUT
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Output Stream Content */}
+                                                        {codeOutput.stdout && (
+                                                            <div className="space-y-1">
+                                                                <span className="text-[10px] font-bold text-gray-500 uppercase">stdout:</span>
+                                                                <pre className="text-emerald-300 whitespace-pre-wrap">{codeOutput.stdout}</pre>
+                                                            </div>
+                                                        )}
+
+                                                        {codeOutput.stderr && (
+                                                            <div className="space-y-1">
+                                                                <span className="text-[10px] font-bold text-gray-500 uppercase">stderr / output:</span>
+                                                                <pre className="text-red-400 whitespace-pre-wrap">{codeOutput.stderr}</pre>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <p className="text-gray-500 py-4 text-center">Click 'Run Code' to execute your program in the isolated sandbox environment.</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
                             </div>
                         )}
 

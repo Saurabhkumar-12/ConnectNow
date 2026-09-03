@@ -15,8 +15,15 @@ export default function LandingPage() {
                 </div>
                 <div className='navlist'>
                     <p onClick={() => {
-                        router("/aljk23")
-                    }}>Join as Guest</p>
+                        const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+                        let p1 = "", p2 = "", p3 = "";
+                        for (let i = 0; i < 3; i++) {
+                            p1 += chars.charAt(Math.floor(Math.random() * chars.length));
+                            p2 += chars.charAt(Math.floor(Math.random() * chars.length));
+                            p3 += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        router(`/${p1}-${p2}-${p3}`);
+                    }} className="cursor-pointer hover:text-orange-400">Join as Guest</p>
                     <p onClick={() => {
                         router("/auth")
 

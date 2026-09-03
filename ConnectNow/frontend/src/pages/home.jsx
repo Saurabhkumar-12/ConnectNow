@@ -83,6 +83,13 @@ function HomeComponent() {
 
                     <div className="flex items-center gap-4">
                         <button 
+                            onClick={() => navigate("/notes")}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition"
+                        >
+                            <span>Notes</span>
+                        </button>
+
+                        <button 
                             onClick={() => navigate("/history")}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition"
                         >

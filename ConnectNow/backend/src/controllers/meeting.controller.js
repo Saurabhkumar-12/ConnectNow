@@ -19,7 +19,7 @@ const generateMeetingId = () => {
 };
 
 // Create a new meeting
-const createMeeting = async (req, res) => {
+const createMeeting = async (req, res, next) => {
     const { password } = req.body;
 
     try {
@@ -36,9 +36,9 @@ const createMeeting = async (req, res) => {
 
         const newMeeting = new MeetingSession({
             meetingId,
-            host: req.user._id,
+            host: req.user ? req.user._id : null,
             password: hashedPassword,
-            participants: [req.user._id],
+            participants: req.user ? [req.user._id] : [],
             status: "active"
         });
 
@@ -50,12 +50,12 @@ const createMeeting = async (req, res) => {
             passwordProtected: !!password
         });
     } catch (e) {
-        return res.status(500).json({ message: `Failed to create meeting: ${e.message}` });
+        next(e);
     }
 };
 
 // Join a meeting
-const joinMeeting = async (req, res) => {
+const joinMeeting = async (req, res, next) => {
     const { meetingId, password } = req.body;
 
     if (!meetingId) {
@@ -63,7 +63,8 @@ const joinMeeting = async (req, res) => {
     }
 
     try {
-        const meeting = await MeetingSession.findOne({ meetingId, status: "active" }).populate("host", "name username avatar");
+        const meeting = await MeetingSession.findOne({ meetingId: meetingId.toLowerCase().trim(), status: "active" })
+            .populate("host", "name username avatar");
         
         if (!meeting) {
             return res.status(httpStatus.NOT_FOUND).json({ message: "Meeting not found or has already ended" });
@@ -96,19 +97,19 @@ const joinMeeting = async (req, res) => {
             message: "Successfully joined meeting",
             meetingId: meeting.meetingId,
             host: meeting.host,
-            isHost: req.user ? meeting.host._id.toString() === req.user._id.toString() : false
+            isHost: req.user && meeting.host ? meeting.host._id.toString() === req.user._id.toString() : false
         });
     } catch (e) {
-        return res.status(500).json({ message: `Failed to join meeting: ${e.message}` });
+        next(e);
     }
 };
 
 // Get active meeting details
-const getMeetingInfo = async (req, res) => {
+const getMeetingInfo = async (req, res, next) => {
     const { id } = req.params;
 
     try {
-        const meeting = await MeetingSession.findOne({ meetingId: id, status: "active" })
+        const meeting = await MeetingSession.findOne({ meetingId: id.toLowerCase().trim(), status: "active" })
             .populate("host", "name username email avatar")
             .populate("participants", "name username email avatar");
 
@@ -127,12 +128,14 @@ const getMeetingInfo = async (req, res) => {
             meetingId: meeting.meetingId,
             host: meeting.host,
             participants: meeting.participants,
-            isHost: req.user ? meeting.host._id.toString() === req.user._id.toString() : false,
+            isHost: req.user && meeting.host ? meeting.host._id.toString() === req.user._id.toString() : false,
             passwordProtected: !!meeting.password
         });
     } catch (e) {
-        return res.status(500).json({ message: `Failed to get meeting info: ${e.message}` });
+        next(e);
     }
 };
 
+
 export { createMeeting, joinMeeting, getMeetingInfo };
+
